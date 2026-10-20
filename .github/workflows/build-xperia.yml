@@ -28,13 +28,11 @@ jobs:
       # jni/Android.mk and jni/Application.mk (DrZ80 stays off, as upstream).
       # Only the ABI, platform and optimization flags are added on top.
       - name: Build with ndk-build
+        working-directory: jni
         env:
           NDK_HOME: ${{ steps.ndk.outputs.ndk-path }}
         run: |
           "$NDK_HOME/ndk-build" -j"$(nproc)" \
-            NDK_PROJECT_PATH=. \
-            APP_BUILD_SCRIPT=jni/Android.mk \
-            NDK_APPLICATION_MK=jni/Application.mk \
             APP_ABI=armeabi-v7a \
             APP_PLATFORM=${{ env.APP_PLATFORM }} \
             APP_OPTIM=release \
@@ -46,6 +44,7 @@ jobs:
           NDK_HOME: ${{ steps.ndk.outputs.ndk-path }}
         run: |
           BIN="$NDK_HOME/toolchains/llvm/prebuilt/linux-x86_64/bin"
+          # ndk-build run from jni/ writes output to the project root's libs/
           SO=libs/armeabi-v7a/libretro.so
           if [ ! -f "$SO" ]; then
             echo "::error::$SO not found. Built libraries:"
