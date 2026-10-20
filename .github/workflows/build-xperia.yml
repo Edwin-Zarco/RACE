@@ -1,0 +1,61 @@
+name: Build RACE (Android armeabi-v7a / Xperia Play)
+
+on:
+  push:
+  pull_request:
+  workflow_dispatch:
+
+env:
+  NDK_VERSION: r23c
+  # r23c's minimum is API 16 (Android 4.1); Android 4.0.4 is API 15.
+  APP_PLATFORM: android-16
+
+jobs:
+  build-android:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+
+      - name: Set up NDK ${{ env.NDK_VERSION }}
+        id: ndk
+        uses: nttld/setup-ndk@v1
+        with:
+          ndk-version: ${{ env.NDK_VERSION }}
+          add-to-path: false
+
+      # Official build: run ndk-build in jni/ using the repo's own
+      # jni/Android.mk and jni/Application.mk (DrZ80 stays off, as upstream).
+      # Only the ABI, platform and optimization flags are added on top.
+      - name: Build with ndk-build
+        working-directory: jni
+        env:
+          NDK_HOME: ${{ steps.ndk.outputs.ndk-path }}
+        run: |
+          "$NDK_HOME/ndk-build" -j"$(nproc)" \
+            APP_ABI=armeabi-v7a \
+            APP_PLATFORM=${{ env.APP_PLATFORM }} \
+            APP_OPTIM=release \
+            APP_CFLAGS="-O3 -DNDEBUG -march=armv7-a -mtune=cortex-a8 -mfpu=neon -mfloat-abi=softfp -ffast-math -fomit-frame-pointer -funroll-loops -ffunction-sections -fdata-sections -flto" \
+            APP_LDFLAGS="-flto -Wl,--gc-sections -Wl,-O2"
+
+      - name: Inspect result
+        env:
+          NDK_HOME: ${{ steps.ndk.outputs.ndk-path }}
+        run: |
+          BIN="$NDK_HOME/toolchains/llvm/prebuilt/linux-x86_64/bin"
+          mkdir -p dist
+          cp jni/libs/armeabi-v7a/libretro.so dist/race_libretro_android.so
+          "$BIN/llvm-readelf" -h -A -d dist/race_libretro_android.so | grep -E "Machine|Tag_CPU_arch|Tag_FP_arch|Tag_Advanced_SIMD|NEEDED|SONAME" || true
+          ls -l dist
+
+      - name: Short SHA
+        id: slug
+        run: echo "sha8=$(echo "${GITHUB_SHA}" | cut -c1-8)" >> "$GITHUB_OUTPUT"
+
+      - name: Upload artifact
+        if: success()
+        uses: actions/upload-artifact@v7
+        with:
+          name: race_libretro_android_armv7_xperia-play-${{ steps.slug.outputs.sha8 }}
+          path: dist/race_libretro_android.so
