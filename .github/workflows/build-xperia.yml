@@ -1,4 +1,4 @@
-name: Build RACE (Android armeabi-v7a / Xperia Play)
+name: Build RACE (Android armeabi-v7a)
 
 on:
   push:
@@ -7,27 +7,22 @@ on:
 
 env:
   NDK_VERSION: r23c
-  # r23c's minimum is API 16 (Android 4.1); Android 4.0.4 is API 15.
   APP_PLATFORM: android-16
 
 jobs:
-  build-android:
+  build:
     runs-on: ubuntu-latest
     steps:
-      - name: Checkout
-        uses: actions/checkout@v7
+      - uses: actions/checkout@v7
 
-      - name: Set up NDK ${{ env.NDK_VERSION }}
+      - name: Set up NDK
         id: ndk
         uses: nttld/setup-ndk@v1
         with:
           ndk-version: ${{ env.NDK_VERSION }}
           add-to-path: false
 
-      # Official build: run ndk-build in jni/ using the repo's own
-      # jni/Android.mk and jni/Application.mk (DrZ80 stays off, as upstream).
-      # Only the ABI, platform and optimization flags are added on top.
-      - name: Build with ndk-build
+      - name: Build
         working-directory: jni
         env:
           NDK_HOME: ${{ steps.ndk.outputs.ndk-path }}
@@ -36,33 +31,16 @@ jobs:
             APP_ABI=armeabi-v7a \
             APP_PLATFORM=${{ env.APP_PLATFORM }} \
             APP_OPTIM=release \
-            APP_CFLAGS="-O3 -DNDEBUG -march=armv7-a -mtune=cortex-a8 -mfpu=neon -mfloat-abi=softfp -ffast-math -fomit-frame-pointer -funroll-loops -ffunction-sections -fdata-sections -flto" \
-            APP_LDFLAGS="-flto -Wl,--gc-sections -Wl,-O2"
+            LOCAL_ARM_MODE=arm \
+            APP_CFLAGS="-O3 -DNDEBUG -march=armv7-a -mtune=cortex-a8 -mfpu=neon -mfloat-abi=softfp -ffast-math -fomit-frame-pointer -funroll-loops -fno-stack-protector -ffunction-sections -fdata-sections -flto" \
+            APP_LDFLAGS="-flto -Wl,--lto-O3 -Wl,--gc-sections -Wl,-O2"
 
-      - name: Inspect result
-        env:
-          NDK_HOME: ${{ steps.ndk.outputs.ndk-path }}
+      - name: Package
         run: |
-          BIN="$NDK_HOME/toolchains/llvm/prebuilt/linux-x86_64/bin"
-          # ndk-build run from jni/ writes output to the project root's libs/
-          SO=libs/armeabi-v7a/libretro.so
-          if [ ! -f "$SO" ]; then
-            echo "::error::$SO not found. Built libraries:"
-            find . -name "*.so" -path "*armeabi-v7a*"
-            exit 1
-          fi
           mkdir -p dist
-          cp "$SO" dist/race_libretro_android.so
-          "$BIN/llvm-readelf" -h -A -d dist/race_libretro_android.so | grep -E "Machine|Tag_CPU_arch|Tag_FP_arch|Tag_Advanced_SIMD|NEEDED|SONAME" || true
-          ls -l dist
+          cp libs/armeabi-v7a/libretro.so dist/race_libretro_android.so
 
-      - name: Short SHA
-        id: slug
-        run: echo "sha8=$(echo "${GITHUB_SHA}" | cut -c1-8)" >> "$GITHUB_OUTPUT"
-
-      - name: Upload artifact
-        if: success()
-        uses: actions/upload-artifact@v7
+      - uses: actions/upload-artifact@v7
         with:
-          name: race_libretro_android_armv7_xperia-play-${{ steps.slug.outputs.sha8 }}
+          name: race_libretro_android_armv7
           path: dist/race_libretro_android.so
